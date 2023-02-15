@@ -20,7 +20,12 @@ class WorldModelOutput:
     logits_observations: torch.FloatTensor
     logits_rewards: torch.FloatTensor
     logits_ends: torch.FloatTensor
-
+class MyDataParallel(torch.nn.DataParallel):
+    def __getattr__(self, name):
+        try:
+            return super().__getattr__(name)
+        except AttributeError:
+            return getattr(self.module, name)
 
 class WorldModel(nn.Module):
     def __init__(self, obs_vocab_size: int, act_vocab_size: int, config: TransformerConfig) -> None:
@@ -85,7 +90,7 @@ class WorldModel(nn.Module):
         prev_steps = 0 if past_keys_values is None else past_keys_values.size
 
         sequences = self.embedder(tokens, num_steps, prev_steps) + self.pos_emb(prev_steps + torch.arange(num_steps, device=tokens.device))
-
+        mm = MyDataParallel(self.transformer, device_ids=[0,1])
         x = self.transformer(sequences, past_keys_values)
 
         logits_observations = self.head_observations(x, num_steps=num_steps, prev_steps=prev_steps)
@@ -95,6 +100,7 @@ class WorldModel(nn.Module):
         return WorldModelOutput(x, logits_observations, logits_rewards, logits_ends)
 
     def compute_loss(self, model, batch: Batch, tokenizer: Tokenizer, **kwargs: Any) -> LossWithIntermediateLosses:
+
 
         with torch.no_grad():
             obs_tokens = tokenizer.encode(batch['observations'], should_preprocess=True).tokens  # (BL, K)
