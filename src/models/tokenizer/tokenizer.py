@@ -21,6 +21,12 @@ class TokenizerEncoderOutput:
     z_quantized: torch.FloatTensor
     tokens: torch.LongTensor
 
+class MyDataParallel(torch.nn.DataParallel):
+    def __getattr__(self, name):
+        try:
+            return super().__getattr__(name)
+        except AttributeError:
+            return getattr(self.module, name)
 
 class Tokenizer(nn.Module):
     def __init__(self, vocab_size: int, embed_dim: int, encoder: Encoder, decoder: Decoder, with_lpips: bool = True) -> None:
@@ -43,10 +49,11 @@ class Tokenizer(nn.Module):
         reconstructions = self.decode(decoder_input, should_postprocess)
         return outputs.z, outputs.z_quantized, reconstructions
 
-    def compute_loss(self, batch: Batch, **kwargs: Any) -> LossWithIntermediateLosses:
+    def compute_loss(self,model, batch: Batch, **kwargs: Any) -> LossWithIntermediateLosses:
         assert self.lpips is not None
         observations = self.preprocess_input(rearrange(batch['observations'], 'b t c h w -> (b t) c h w'))
-        z, z_quantized, reconstructions = self(observations, should_preprocess=False, should_postprocess=False)
+        mm = MyDataParallel(self, device_ids=[0,1])
+        z, z_quantized, reconstructions = mm(observations, should_preprocess=False, should_postprocess=False)
 
         # Codebook loss. Notes:
         # - beta position is different from taming and identical to original VQVAE paper
