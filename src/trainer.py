@@ -211,7 +211,7 @@ class Trainer:
         for batch in self.test_dataset.traverse(batch_num_samples, sequence_length):
             batch = self._to_device(batch)
 
-            losses = component.compute_loss(batch, **kwargs_loss)
+            losses = component.compute_loss(component, batch, **kwargs_loss)
             loss_total_epoch += losses.loss_total.item()
 
             for loss_name, loss_value in losses.intermediate_losses.items():
